@@ -1,38 +1,32 @@
-const cors = require("cors");
 require("dotenv").config();
 
 const express = require("express");
-const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
-app.use(cors());
 const PORT = process.env.PORT || 3000;
 
+const API_KEY = process.env.OPENROUTER_API_KEY;
+const MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
+const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+
 app.use(express.json({ limit: "12mb" }));
-
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  console.error("Missing GEMINI_API_KEY in .env");
-  process.exit(1);
-}
-
-const ai = new GoogleGenAI({ apiKey });
-
 app.use(express.static(__dirname + "/public"));
 
 app.get("/api/health", (req, res) => {
   res.json({
     name: "GLUF AI",
-    status: "online"
+    status: "online",
+    provider: "OpenRouter"
   });
 });
 
 app.post("/api/chat", async (req, res) => {
-  const message = req.body && req.body.message;
-  const attachment = req.body && req.body.attachment;
+  const body = req.body || {};
+  const message =
+    typeof body.message === "string" ? body.message.trim() : "";
+  const attachment = body.attachment;
 
-  if (typeof message !== "string" || (!message.trim() && !attachment)) {
+  if (!message && !attachment) {
     return res.status(400).json({
       error: "Please enter a message or attach a file."
     });
@@ -44,20 +38,40 @@ app.post("/api/chat", async (req, res) => {
     });
   }
 
-  // GLUF_MEDIA_INPUT
-  let mediaInput = null;
-  let effectiveMessage = message.trim();
+  if (!API_KEY) {
+    console.error("Missing OPENROUTER_API_KEY environment variable.");
+
+    return res.status(503).json({
+      error: "GLUF AI is not configured yet. Please check the server environment settings."
+    });
+  }
+
+  let effectiveMessage = message;
+  let attachmentPart = null;
 
   if (attachment) {
     const allowedImages = [
-      "image/jpeg", "image/png", "image/webp", "image/gif"
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif"
     ];
-    const isPdf = attachment.type === "application/pdf";
-    const isImage = allowedImages.includes(attachment.type);
-    const isText = [
-      "text/plain", "text/markdown", "text/csv",
+
+    const allowedText = [
+      "text/plain",
+      "text/markdown",
+      "text/csv",
       "application/json"
-    ].includes(attachment.type);
+    ];
+
+    const isImage =
+      typeof attachment.type === "string" &&
+      allowedImages.includes(attachment.type);
+
+    const isPdf = attachment.type === "application/pdf";
+    const isText =
+      typeof attachment.type === "string" &&
+      allowedText.includes(attachment.type);
 
     if (
       typeof attachment.name !== "string" ||
@@ -71,34 +85,55 @@ app.post("/api/chat", async (req, res) => {
     }
 
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(attachment.data)) {
-      return res.status(400).json({ error: "The selected file data is invalid." });
+      return res.status(400).json({
+        error: "The selected file data is invalid."
+      });
     }
 
     if (isText) {
-      const fileText = Buffer.from(attachment.data, "base64").toString("utf8");
+      const fileText = Buffer
+        .from(attachment.data, "base64")
+        .toString("utf8");
+
       if (fileText.length > 500000) {
-        return res.status(400).json({ error: "That text document is too large to analyze." });
+        return res.status(400).json({
+          error: "That text document is too large to analyze."
+        });
       }
-      effectiveMessage = (effectiveMessage || "Please analyze this document.") +
+
+      effectiveMessage =
+        (effectiveMessage || "Please analyze this document.") +
         "\n\nDocument: " + attachment.name.slice(0, 150) +
         "\n\n" + fileText;
-    } else {
-      mediaInput = {
-        type: isPdf ? "document" : "image",
-        data: attachment.data,
-        mime_type: attachment.type
+    } else if (isImage) {
+      attachmentPart = {
+        type: "image_url",
+        image_url: {
+          url: "data:" +
+            attachment.type +
+            ";base64," +
+            attachment.data
+        }
       };
+
+      effectiveMessage =
+        effectiveMessage || "Please describe and analyze this image.";
+    } else if (isPdf) {
+      attachmentPart = {
+        type: "file",
+        file: {
+          filename: attachment.name.slice(0, 150),
+          file_data: attachment.data
+        }
+      };
+
+      effectiveMessage =
+        effectiveMessage || "Please analyze this PDF document.";
     }
   }
 
-  if (message.length > 4000) {
-    return res.status(400).json({
-      error: "Please keep your message under 4000 characters."
-    });
-  }
-
-  const history = Array.isArray(req.body.history)
-    ? req.body.history
+  const history = Array.isArray(body.history)
+    ? body.history
     : [];
 
   const safeHistory = history
@@ -108,50 +143,125 @@ app.post("/api/chat", async (req, res) => {
       typeof item.text === "string"
     )
     .slice(-10)
-    .map(item =>
-      (item.role === "user" ? "User" : "GLUF AI") +
-      ": " + item.text.slice(0, 1000)
-    )
-    .join("\n");
+    .map(item => ({
+      role: item.role,
+      content: item.text.slice(0, 1000)
+    }));
 
-  const LONG_TERM_MEMORY = typeof req.body.memory === "string" ? req.body.memory.slice(0, 5000) : ""; 
+  const memory =
+    typeof body.memory === "string"
+      ? body.memory.slice(0, 5000)
+      : "";
 
-  const prompt = safeHistory
-    ? "Recent conversation:\n" + safeHistory +
-      "\n\nLatest user message: " + message.trim() +
-      "\nRespond to the latest message as GLUF AI."
-    : (message.trim());
+  const systemPrompt =
+    "You are GLUF AI, a helpful, honest, friendly general-purpose AI assistant. " +
+    "Answer the user's latest message clearly and accurately. " +
+    "Use relevant conversation history and memory when provided. " +
+    "If you are uncertain, say so. Do not invent facts.";
+
+  const messages = [
+    {
+      role: "system",
+      content: systemPrompt +
+        (memory ? "\n\nRelevant remembered information:\n" + memory : "")
+    },
+    ...safeHistory,
+    {
+      role: "user",
+      content: attachmentPart
+        ? [
+            { type: "text", text: effectiveMessage },
+            attachmentPart
+          ]
+        : effectiveMessage
+    }
+  ];
 
   try {
-    const memoryContext = LONG_TERM_MEMORY ? "Known facts remembered from earlier conversations (use only when relevant):\\n" + LONG_TERM_MEMORY + "\\n\\n" : ""; 
-    const finalPrompt = memoryContext + prompt;
-
-    const interactionInput = mediaInput
-      ? [{ type: "text", text: finalPrompt }, mediaInput]
-      : finalPrompt;
-
-    const response = await ai.interactions.create({
-      model: "gemini-3.5-flash",
-      input: interactionInput,
-      system_instruction:
-        "You are GLUF AI, a helpful, honest, friendly general-purpose AI assistant. Use the supplied recent conversation to understand follow-up questions. Explain things clearly and admit uncertainty when appropriate."
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + API_KEY,
+        "Content-Type": "application/json",
+        "X-OpenRouter-Title": "GLUF AI"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.7,
+        max_tokens: 1200
+      }),
+      signal: AbortSignal.timeout(60000)
     });
 
-    res.json({
-      reply: response.output_text ||
-        "I couldn't generate a text response. Please try again."
-    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const providerMessage =
+        result.error?.message ||
+        result.message ||
+        "Unknown provider error";
+
+      console.error(
+        "OpenRouter request failed:",
+        response.status,
+        providerMessage
+      );
+
+      if (response.status === 401 || response.status === 403) {
+        return res.status(502).json({
+          error: "OpenRouter rejected the API key or access. Check your key and account."
+        });
+      }
+
+      if (response.status === 429) {
+        return res.status(502).json({
+          error: "The AI provider's usage limit has been reached. Please try later or check your OpenRouter account limits."
+        });
+      }
+
+      return res.status(502).json({
+        error: "OpenRouter could not complete the request. Check the server logs for details."
+      });
+    }
+
+    const reply = result.choices?.[0]?.message?.content;
+
+    if (typeof reply !== "string" || !reply.trim()) {
+      console.error(
+        "OpenRouter returned no text:",
+        JSON.stringify(result).slice(0, 1500)
+      );
+
+      return res.status(502).json({
+        error: "The AI provider returned no text. Please try again."
+      });
+    }
+
+    return res.json({ reply: reply.trim() });
+
   } catch (error) {
-    console.error("Gemini request failed:", error.message);
+    console.error(
+      "OpenRouter connection failed:",
+      error.name,
+      error.message
+    );
 
-    res.status(502).json({
-      error: "GLUF AI could not get a response. Please check the server log."
+    if (error.name === "TimeoutError" ||
+        error.name === "AbortError") {
+      return res.status(504).json({
+        error: "The AI request timed out. Please try again."
+      });
+    }
+
+    return res.status(502).json({
+      error: "GLUF AI could not connect to the AI provider. Please try again."
     });
   }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    "GLUF AI server running at http://127.0.0.1:" + PORT
-  );
+  console.log("GLUF AI server running on port " + PORT);
+  console.log("AI provider: OpenRouter");
+  console.log("Configured model: " + MODEL);
 });
