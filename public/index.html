@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#10172a">
+  <title>GLUF AI</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    :root {
+      --bg: #0b1120;
+      --panel: #111b30;
+      --accent: #5685ff;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #26344d;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #5685ff, #8b5cf6);
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .brand h1 { margin: 0; font-size: 19px; }
+
+    .brand p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #chat {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .welcome {
+      margin: auto 0;
+      text-align: center;
+      padding: 20px 8px;
+    }
+
+    .welcome .big-logo { font-size: 48px; margin-bottom: 12px; }
+    .welcome h2 { font-size: 25px; margin: 0 0 10px; }
+
+    .welcome p {
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .suggestions {
+      display: grid;
+      gap: 9px;
+      margin-top: 22px;
+    }
+
+    .suggestion {
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 12px;
+      background: var(--panel);
+      color: var(--text);
+      text-align: left;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .message {
+      max-width: 88%;
+      padding: 12px 14px;
+      border-radius: 16px;
+      line-height: 1.55;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .assistant {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .composer {
+      padding: 12px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+    }
+
+    form {
+      display: flex;
+      gap: 9px;
+      max-width: 760px;
+      margin: auto;
+    }
+
+    textarea {
+      flex: 1;
+      min-width: 0;
+      resize: none;
+      max-height: 120px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+
+    textarea:focus { border-color: var(--accent); }
+
+    #attachBtn { width:49px; min-width:49px; border:1px solid var(--border); border-radius:15px; background:var(--bg); color:var(--text); font-size:22px; cursor:pointer; }
+    #fileInput { display:none; }
+
+    #send {
+      width: 49px;
+      min-width: 49px;
+      border: 0;
+      border-radius: 15px;
+      background: var(--accent);
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    #send:disabled { opacity: 0.5; }
+
+    .notice {
+      margin: 9px auto 0;
+      max-width: 760px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--muted);
+    }
+  
+    body { overflow: hidden; }
+    header { min-height: 66px; }
+    .menu-btn, .new-chat-btn, .close-sidebar {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 13px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .menu-btn { font-size: 21px; }
+    #gluf-sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(300px, 85vw);
+      z-index: 1000;
+      padding: 16px;
+      background: #101827;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transform: translateX(-105%);
+      transition: transform .25s ease;
+      overflow-y: auto;
+    }
+    #gluf-sidebar.open { transform: translateX(0); }
+    #gluf-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: #0009;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    #gluf-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .sidebar-title { font-size: 20px; font-weight: 750; }
+    .sidebar-action {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 13px;
+      border-radius: 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .sidebar-section {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 12px;
+    }
+    #gluf-chat-list { display: grid; gap: 6px; }
+    #gluf-chat-list p { color: var(--muted); font-size: 13px; }
+    #gluf-account { margin-top: auto; }
+    #gluf-account #gluf-auth {
+      padding: 8px 0;
+      text-align: left;
+      background: transparent;
+      color: var(--text);
+    }
+    #gluf-account #gluf-auth button,
+    #gluf-account #gluf-auth input {
+      max-width: 100%;
+      margin: 4px 0;
+      padding: 9px;
+      border-radius: 8px;
+    }
+    @media (min-width: 760px) {
+      #chat { padding-left: max(18px, calc((100% - 760px)/2)); padding-right: max(18px, calc((100% - 760px)/2)); }
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <div id="gluf-overlay"></div>
+  <aside id="gluf-sidebar" aria-label="Navigation menu">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span class="sidebar-title">GLUF AI</span>
+      <button class="close-sidebar" id="gluf-close" aria-label="Close menu">✕</button>
+    </div>
+    <button class="sidebar-action" id="gluf-new-chat">＋ New Chat</button>
+    <div class="sidebar-section">CHATS</div>
+    <div id="gluf-chat-list"><p>Your conversations will appear here.</p></div>
+    <div class="sidebar-section">CLOUD CHATS</div>
+    <div id="gluf-cloud-chat-list"><p>Sign in to view cloud chats.</p></div>
+    <div id="gluf-account">
+      <div class="sidebar-section">YOUR ACCOUNT</div>
+      <div id="gluf-account-slot"></div>
+    </div>
+  </aside>
+
+  <header>
+    <button class="menu-btn" id="gluf-menu" aria-label="Open menu">☰</button>
+    <div class="logo">G</div>
+    <div class="brand">
+      <h1>GLUF AI</h1>
+      <p>Your intelligent assistant</p>
+    </div>
+  </header>
+
+  <main id="chat" aria-live="polite">
+    <section class="welcome" id="welcome">
+      <div class="big-logo">✦</div>
+      <h2>Hello! I'm GLUF AI.</h2>
+      <p>
+        Ask me a question, explore an idea, or get help
+        understanding something new.
+      </p>
+
+      <div class="suggestions">
+        <button class="suggestion"
+          data-prompt="Explain artificial intelligence in simple words.">
+          ✨ Explain artificial intelligence
+        </button>
+
+        <button class="suggestion"
+          data-prompt="Give me five tips for learning effectively.">
+          📚 Help me learn something new
+        </button>
+
+        <button class="suggestion"
+          data-prompt="What can I build with HTML, CSS and JavaScript?">
+          💻 Explore what I can create
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <section class="composer">
+    <form id="chatForm">
+      <input id="fileInput" type="file" accept="image/*,.pdf,.txt,.md,.csv,.json" />
+      <button id="attachBtn" type="button" aria-label="Attach a photo or document" title="Attach a photo or document">＋</button>
+      <textarea
+        id="prompt"
+        placeholder="Message GLUF AI..."
+        rows="1"
+        aria-label="Your message"
+        required
+      ></textarea>
+
+      <button id="send" type="submit" aria-label="Send message">↑</button>
+    </form>
+
+    <p class="notice">
+      GLUF AI Preview · AI connection enabled
+    </p>
+  </section>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const STORAGE_KEY = "gluf_ai_conversation_v1";
+    let conversationHistory = [];
+    const CLOUD_CHAT_KEY = "gluf_ai_cloud_chat_id";
+    let cloudChatId = localStorage.getItem(CLOUD_CHAT_KEY);
+
+    try {
+      const savedHistory = localStorage.getItem(STORAGE_KEY);
+      if (savedHistory) {
+        const parsedHistory = JSON.parse(savedHistory);
+        if (Array.isArray(parsedHistory)) {
+          conversationHistory = parsedHistory
+            .filter(item =>
+              item &&
+              ["user", "assistant"].includes(item.role) &&
+              typeof item.text === "string"
+            )
+            .slice(-12);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not restore saved conversation.", error);
+    }
+    const form = document.getElementById("chatForm");
+    const promptInput = document.getElementById("prompt");
+    const sendButton = document.getElementById("send");
+    // GLUF_FILE_PICKER
+    const fileInput = document.getElementById("fileInput");
+    const attachButton = document.getElementById("attachBtn");
+    let selectedFile = null;
+    attachButton.addEventListener("click", () => fileInput.click());
+    // GLUF_SEND_ATTACHMENT
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    fileInput.addEventListener("change", () => {
+      selectedFile = fileInput.files[0] || null;
+      promptInput.placeholder = selectedFile
+        ? "Selected: " + selectedFile.name + " — ask about it..."
+        : "Message GLUF AI...";
+    });
+
+
+    let welcome = document.getElementById("welcome");
+
+    function addMessage(text, sender) {
+      const bubble = document.createElement("div");
+      bubble.className = "message " + sender;
+
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = sender === "user" ? "You" : "GLUF AI";
+
+      const content = document.createElement("div");
+      content.textContent = text;
+
+      bubble.append(label, content);
+      chat.appendChild(bubble);
+      chat.scrollTop = chat.scrollHeight;
+
+      return content;
+    }
+
+    // Restore saved messages when the page opens.
+    conversationHistory.forEach(item => {
+      addMessage(item.text, item.role);
+    });
+
+    if (conversationHistory.length > 0) {
+      welcome?.remove();
+      welcome = null;
+    }
+
+    async function sendMessage(text) {
+      text = text.trim();
+
+      if ((!text && !selectedFile) || sendButton.disabled) return;
+
+      welcome?.remove();
+      welcome = null;
+
+      const previousHistory = conversationHistory.slice(-10);
+
+      const fileToSend = selectedFile;
+      addMessage(text || ("Please analyze this file: " + fileToSend.name), "user");
+      conversationHistory.push({ role: "user", text: text });
+
+      if (conversationHistory.length > 12) {
+        conversationHistory.splice(0, conversationHistory.length - 12);
+      }
+
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(conversationHistory)
+        );
+      } catch (storageError) {
+        console.warn("Could not save conversation.", storageError);
+      }
+
+      promptInput.value = "";
+      promptInput.style.height = "auto";
+      sendButton.disabled = true;
+
+      const reply = addMessage("Thinking...", "assistant");
+
+      try {
+
+        // GLUF_LONG_MEMORY_LOAD
+        let savedMemory = "";
+        try {
+          if (window.GLUF_AUTH_CLIENT) {
+            const { data: authData } = await window.GLUF_AUTH_CLIENT.auth.getSession();
+            const user = authData?.session?.user;
+            if (user) {
+              const { data, error } = await window.GLUF_AUTH_CLIENT
+                .from("user_memories")
+                .select("memory")
+                .eq("user_id", user.id)
+                .maybeSingle();
+              if (error) throw error;
+              savedMemory = data?.memory || "";
+            }
+          }
+        } catch (memoryError) {
+          console.warn("Could not load long-term memory:", memoryError.message);
+        }
+
+        let attachment = null;
+        if (fileToSend) {
+          if (fileToSend.size > 7 * 1024 * 1024) {
+            throw new Error("Please choose a file smaller than 7 MB.");
+          }
+          attachment = {
+            name: fileToSend.name,
+            type: fileToSend.type,
+            data: await readFileAsBase64(fileToSend)
+          };
+        }
+
+        const response = await fetch(
+          "/api/chat",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                message: text,
+                history: previousHistory,
+                memory: savedMemory,
+                attachment: attachment
+            })
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "AI request failed.");
+        }
+
+        reply.textContent = data.reply || "No response received.";
+            conversationHistory.push(
+                { role: "assistant", text: reply.textContent }
+            );
+            if (conversationHistory.length > 12) {
+                conversationHistory.splice(
+                    0,
+                    conversationHistory.length - 12
+                );
+            }
+
+            try {
+              localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(conversationHistory)
+              );
+            } catch (storageError) {
+              console.warn("Could not save conversation.", storageError);
+            }
+          // GLUF_AUTO_MEMORY_SAVE
+          try {
+            const client = window.GLUF_AUTH_CLIENT;
+            if (client) {
+              const { data: sessionData } = await client.auth.getSession();
+              const user = sessionData?.session?.user;
+              if (user) {
+                const memoryText = /\\b(remember that|please remember|don't forget|do not forget)\\b/i.test(text)
+                  ? text.replace(/^.*?\\b(remember that|please remember|don't forget|do not forget)\\b\\s*/i, '').trim()
+                  : '';
+                if (memoryText) {
+                  const combined = [savedMemory, memoryText].filter(Boolean).join('\\n');
+                  const { error } = await client.from('user_memories').upsert({
+                    user_id: user.id,
+                    memory: combined.slice(-5000),
+                    updated_at: new Date().toISOString()
+                  });
+                  if (error) console.warn('Memory save failed:', error.message);
+                }
+              }
+            }
+          } catch (memoryError) {
+            console.warn('Memory save failed:', memoryError.message);
+          }
+
+          if (window.GLUF_CLOUD && window.GLUF_AUTH_CLIENT) { try { const { data: authData } = await window.GLUF_AUTH_CLIENT.auth.getSession(); if (authData.session) { if (!cloudChatId) { const created = await window.GLUF_CLOUD.createChat(text.slice(0, 42) || "New Chat"); cloudChatId = created.id; localStorage.setItem(CLOUD_CHAT_KEY, cloudChatId); } await window.GLUF_CLOUD.saveMessages(cloudChatId, [{ role: "user", text: text }, { role: "assistant", text: reply.textContent }]);
+            if (window.GLUF_LOAD_CLOUD_CHATS) await window.GLUF_LOAD_CLOUD_CHATS(); } } catch (cloudError) { alert("Cloud save failed: " + cloudError.message); } }
+
+      } catch (error) {
+        console.error("GLUF AI error:", error);
+
+        reply.textContent =
+          "Connection failed. Make sure the Termux server is running. " +
+          "If it is running, the preview may need additional connection settings.";
+      } finally {
+        sendButton.disabled = false;
+        promptInput.focus();
+        chat.scrollTop = chat.scrollHeight;
+      }
+    }
+
+    window.addEventListener("gluf:open-cloud-chat",function(e){conversationHistory=(e.detail||[]).slice(-12);chat.replaceChildren();welcome?.remove();welcome=null;conversationHistory.forEach(m=>addMessage(m.text,m.role));localStorage.setItem(STORAGE_KEY,JSON.stringify(conversationHistory));chat.scrollTop=chat.scrollHeight;});
+    form.addEventListener("submit", async function(event) {
+      event.preventDefault();
+      await sendMessage(promptInput.value);
+    });
+
+    promptInput.addEventListener("input", function() {
+      this.style.height = "auto";
+      this.style.height = Math.min(this.scrollHeight, 120) + "px";
+    });
+
+    promptInput.addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    document.querySelectorAll(".suggestion").forEach(function(button) {
+      button.addEventListener("click", function() {
+        sendMessage(this.dataset.prompt);
+      });
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/cloud-sync.js"></script>
+  <script src="/cloud-history.js"></script>
+  <script src="/chat-history.js"></script>
+
+
+  <script>
+  (() => {
+    const sidebar = document.getElementById("gluf-sidebar");
+    const overlay = document.getElementById("gluf-overlay");
+    const open = () => {
+      sidebar.classList.add("open");
+      overlay.classList.add("open");
+    };
+    const close = () => {
+      sidebar.classList.remove("open");
+      overlay.classList.remove("open");
+    };
+    document.getElementById("gluf-menu").addEventListener("click", open);
+    document.getElementById("gluf-close").addEventListener("click", close);
+    overlay.addEventListener("click", close);
+
+    let startX = 0;
+    document.addEventListener("touchstart", e => {
+      startX = e.changedTouches[0].clientX;
+    }, {passive:true});
+    document.addEventListener("touchend", e => {
+      const endX = e.changedTouches[0].clientX;
+      const diff = endX - startX;
+      if (startX < 30 && diff > 80) open();
+      if (diff < -80 && sidebar.classList.contains("open")) close();
+    }, {passive:true});
+
+    document.getElementById("gluf-new-chat").addEventListener("click", () => {
+      try { localStorage.removeItem("gluf_ai_conversation_v1"); } catch(e) {}
+      location.reload();
+    });
+  })();
+  </script>
+
+</body>
+</html>

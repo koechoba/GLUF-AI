@@ -1,0 +1,7 @@
+.env
+node_modules/
+*.backup
+*.before-media
+*.before-server-media
+*.memory-backup
+.gluf-script-check.js
