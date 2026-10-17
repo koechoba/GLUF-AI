@@ -9,6 +9,14 @@ const API_KEY = process.env.OPENROUTER_API_KEY;
 const MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json({ limit: "12mb" }));
 app.use(express.static(__dirname + "/public"));
 
