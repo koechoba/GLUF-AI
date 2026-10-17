@@ -1,9 +1,11 @@
+const cors = require("cors");
 require("dotenv").config();
 
 const express = require("express");
 const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
+app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "12mb" }));
